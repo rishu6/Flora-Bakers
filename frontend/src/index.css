@@ -11,3 +11,4 @@
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 .waste-charts{margin-top:15px}.waste-charts h4{font:500 13px 'Playfair Display',Georgia,serif;margin:2px 0 8px}.waste-note{font-size:9px;line-height:1.5;color:var(--muted);margin:10px 0 0}
 @media(max-width:1100px){.waste-charts{grid-template-columns:1fr}}
+.suggestions-note{display:flex;align-items:center;gap:9px;padding:12px 15px;color:var(--muted);font-size:10px}.suggestions-note svg{color:#a76546;flex:none}

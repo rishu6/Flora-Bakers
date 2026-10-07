@@ -1,9 +1,10 @@
 import type { DashboardData, UploadBatch } from "../types";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
+export const apiUrl = (path: string) => `${API_BASE_URL}${path}`;
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${url}`, options);
+  const response = await fetch(apiUrl(url), options);
   const responseText = await response.text();
   let body: { detail?: string } | null = null;
 
