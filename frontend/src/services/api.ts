@@ -1,12 +1,30 @@
 import type { DashboardData, UploadBatch } from "../types";
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, options);
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.detail ?? `Request failed (${response.status})`);
+  const response = await fetch(`${API_BASE_URL}${url}`, options);
+  const responseText = await response.text();
+  let body: { detail?: string } | null = null;
+
+  if (responseText) {
+    try {
+      body = JSON.parse(responseText) as { detail?: string };
+    } catch {
+      // Keep non-JSON responses readable (for example, a proxy's HTML 404 page).
+    }
   }
-  return response.json() as Promise<T>;
+
+  if (!response.ok) {
+    throw new Error(body?.detail ?? `Request failed (${response.status}${response.statusText ? ` ${response.statusText}` : ""})`);
+  }
+
+  if (!responseText) return undefined as T;
+  try {
+    return JSON.parse(responseText) as T;
+  } catch {
+    throw new Error("The server returned an invalid response. Please try again.");
+  }
 }
 
 export const getUploads = () => request<UploadBatch[]>("/api/uploads");
