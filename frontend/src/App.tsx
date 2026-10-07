@@ -3,16 +3,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ArrowRight, BarChart3, CakeSlice, CircleHelp, FileText, Lightbulb, Moon, Sun, UploadCloud } from "lucide-react";
 import { Dashboard, type DashboardFilters } from "./components/Dashboard";
+import { ProductViewer } from "./components/ProductViewer";
 import { UploadPanel } from "./components/UploadPanel";
 import { getDashboard, getUploads, uploadWorkbook } from "./services/api";
 import type { UploadBatch } from "./types";
 
 const emptyFilters: DashboardFilters = { date_from: "", date_to: "", item: "", day: "", time_from: "", time_to: "" };
-type WorkspaceView = "dashboard" | "report" | "suggestions";
+type WorkspaceView = "dashboard" | "report" | "suggestions" | "products";
 const viewDetails: Record<WorkspaceView, { title: string; subtitle: string }> = {
   dashboard: { title: "Sales overview", subtitle: "Your bakery’s performance at a glance" },
   report: { title: "Analytical report", subtitle: "Explore sales patterns across products, dates, and times" },
   suggestions: { title: "Sales suggestions", subtitle: "Practical ideas based on the sales data you uploaded" },
+  products: { title: "Product viewer", subtitle: "Open an item to explore its individual sales performance" },
 };
 const queryParams = (filters: DashboardFilters, granularity: string) => {
   const params = new URLSearchParams({ granularity });
@@ -50,6 +52,7 @@ export function App() {
       <button className={`nav-item ${activeView === "dashboard" ? "nav-active" : ""}`} onClick={() => setActiveView("dashboard")}><BarChart3 size={17}/> Dashboard</button>
       <button className={`nav-item ${activeView === "report" ? "nav-active" : ""}`} onClick={() => setActiveView("report")}><FileText size={17}/> Analytical report</button>
       <button className={`nav-item ${activeView === "suggestions" ? "nav-active" : ""}`} onClick={() => setActiveView("suggestions")}><Lightbulb size={17}/> Sales suggestions</button>
+      <button className={`nav-item ${activeView === "products" ? "nav-active" : ""}`} onClick={() => setActiveView("products")}><CakeSlice size={17}/> Product viewer</button>
       <button className="nav-item" onClick={() => setShowUploader(true)}><UploadCloud size={17}/> Import sales</button>
       <div className="sidebar-bottom"><div className="sidebar-note"><span className="note-mark">✦</span><strong>Good things<br/>are baking.</strong><p>Make every sales decision with a little more clarity.</p></div><span className="sidebar-version">FLORA BAKES <i/> SALES STUDIO</span></div>
     </aside>
@@ -65,7 +68,7 @@ export function App() {
         {batch && batch.valid_records === 0 && !showUploader && <div className="state-card card"><h2>This workbook needs a few fixes</h2><p>No valid sales rows were found. Open the upload report, correct the listed rows, and upload the workbook again.</p><button className="button button-outline" onClick={() => setShowUploader(true)}>Review upload report</button></div>}
         {!uploads.isLoading && !uploads.isError && !batch && <section className="welcome-card"><div className="welcome-copy"><span className="section-eyebrow">YOUR BAKERY, IN BETTER FOCUS</span><h2>A little data.<br/><em>A lot more clarity.</em></h2><p>Start with your sales workbook. Flora Bakes will validate every row, keep duplicates visible, and turn your real sales into a clear view of your business.</p><button className="button button-primary" onClick={() => setShowUploader(true)}>Upload your first workbook <ArrowRight size={16}/></button><small>Excel .xlsx or .xls · Up to 20 MB</small></div><div className="welcome-art"><div className="art-orbit orbit-one"/><div className="art-orbit orbit-two"/><div className="art-center"><CakeSlice size={48}/><span>fresh<br/>insights</span></div><div className="art-float float-top"><span>✦</span> Real sales data</div><div className="art-float float-bottom"><span>↗</span> Better decisions</div></div></section>}
         {upload.isError && <div className="global-error" role="alert">{upload.error.message}</div>}
-        {batch && <>{dashboard.isLoading && <div className="loading-panel card"><div className="skeleton wide"/><div className="skeleton"/><p>Crunching the numbers…</p></div>}{dashboard.isError && <div className="state-card card"><h2>Analytics couldn’t load</h2><p>{dashboard.error.message}</p><button className="button button-outline" onClick={() => void dashboard.refetch()}>Retry dashboard</button></div>}{dashboard.data && <Dashboard data={dashboard.data} batch={batch} onRefresh={refresh} filters={filters} onFiltersChange={setFilters} granularity={granularity} onGranularityChange={setGranularity} view={activeView}/>}</>}
+        {batch && <>{dashboard.isLoading && <div className="loading-panel card"><div className="skeleton wide"/><div className="skeleton"/><p>Crunching the numbers…</p></div>}{dashboard.isError && <div className="state-card card"><h2>Analytics couldn’t load</h2><p>{dashboard.error.message}</p><button className="button button-outline" onClick={() => void dashboard.refetch()}>Retry dashboard</button></div>}{dashboard.data && (activeView === "products" ? <ProductViewer batch={batch} data={dashboard.data} filters={filters}/> : <Dashboard data={dashboard.data} batch={batch} onRefresh={refresh} filters={filters} onFiltersChange={setFilters} granularity={granularity} onGranularityChange={setGranularity} view={activeView}/>)}</>}
       </motion.div>
     </main>
   </div>;
