@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, LogOut, MessageSquareText, Package, Plus, ShieldCheck, Trash2, X } from "lucide-react";
+import { ClipboardList, LogOut, MessageSquareText, Minus, Package, Plus, ShieldCheck, Trash2, X } from "lucide-react";
 import { createStaffOrder, getStaffFeedback, getStaffOrders, getStaffProducts, getStaffSession, importStaffFeedback, loginStaff, logoutStaff, saveStaffProductsBulk, updateStaffOrder, type OrderDraft, type StoreProduct } from "../services/api";
 
 type StaffTab = "orders" | "products" | "feedback";
@@ -60,15 +60,37 @@ function StaffOrders() {
   const [pickupAt, setPickupAt] = useState("");
   const [paymentStatus, setPaymentStatus] = useState<"pending" | "paid">("paid");
   const [quantities, setQuantities] = useState<Record<number, number>>({});
+  const [productSearch, setProductSearch] = useState("");
+  const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const availableProducts = products.data?.filter((product) => product.available) ?? [];
   const create = useMutation({ mutationFn: createStaffOrder, onSuccess: async () => { setCustomerName(""); setPhone(""); setPickupAt(""); setQuantities({}); await client.invalidateQueries({ queryKey: ["staff-orders"] }); } });
   const update = useMutation({ mutationFn: ({ id, status, payment_status }: { id: number; status: string; payment_status: string }) => updateStaffOrder(id, { status, payment_status }), onSuccess: async () => { await client.invalidateQueries({ queryKey: ["staff-orders"] }); await client.invalidateQueries({ queryKey: ["staff-feedback"] }); } });
+  const searchText = productSearch.trim().toLowerCase().replace(/\s+/g, "");
+  const matches = availableProducts.filter((product) => {
+    if (!searchText) return true;
+    const name = product.item_name.toLowerCase();
+    const initials = name.split(/\s+/).map((part) => part[0] ?? "").join("");
+    return name.replace(/\s+/g, "").includes(searchText) || initials.startsWith(searchText);
+  }).slice(0, 8);
   const selected = availableProducts.filter((product) => quantities[product.id]);
+  const addProduct = (product: (typeof availableProducts)[number]) => {
+    setQuantities((current) => ({ ...current, [product.id]: Math.min((current[product.id] ?? 0) + 1, 100) }));
+    setProductSearch("");
+    setProductDropdownOpen(false);
+  };
+  const changeQuantity = (id: number, delta: number) => setQuantities((current) => {
+    const next = (current[id] ?? 0) + delta;
+    if (next <= 0) { const { [id]: _removed, ...remaining } = current; return remaining; }
+    return { ...current, [id]: Math.min(next, 100) };
+  });
   const draft: OrderDraft = { customer_name: customerName, customer_phone: phone, pickup_at: pickupAt || null, items: selected.map((product) => ({ product_id: product.id, quantity: quantities[product.id] })) };
 
   return <div className="staff-orders-layout"><section className="staff-panel card"><div className="staff-panel-heading"><div><span className="muted-label">WALK-IN OR PHONE ORDER</span><h3>Enter an order</h3></div></div>
     <form className="staff-order-form" onSubmit={(event) => { event.preventDefault(); create.mutate({ ...draft, payment_status: paymentStatus }); }}><div className="staff-order-fields"><label>Customer name<input required value={customerName} onChange={(event) => setCustomerName(event.target.value)}/></label><label>Phone<input required type="tel" value={phone} onChange={(event) => setPhone(event.target.value)}/></label><label>Pickup time<input type="datetime-local" value={pickupAt} onChange={(event) => setPickupAt(event.target.value)}/></label><label>Payment<select value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value as "pending" | "paid")}><option value="paid">Paid (staff confirmed)</option><option value="pending">Pending</option></select></label></div>
-      <div className="staff-order-items">{availableProducts.map((product) => <label key={product.id}><span>{product.item_name} · {money(product.current_price)}</span><input type="number" min="0" max="100" value={quantities[product.id] ?? 0} onChange={(event) => setQuantities((current) => ({ ...current, [product.id]: Number(event.target.value) }))}/></label>)}</div>
+      <div className="order-product-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setProductDropdownOpen(false); }}><label htmlFor="staff-product-search">Add products <span>Search by name or initials, such as “BFC”</span></label><input id="staff-product-search" type="search" value={productSearch} placeholder="Type to find a product…" autoComplete="off" onFocus={() => setProductDropdownOpen(true)} onChange={(event) => { setProductSearch(event.target.value); setProductDropdownOpen(true); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (searchText && matches.length) addProduct(matches[0]); } if (event.key === "Escape") setProductDropdownOpen(false); }}/>
+        {productDropdownOpen && <div className="order-product-options" role="listbox">{matches.map((product) => <button type="button" role="option" aria-selected={Boolean(quantities[product.id])} key={product.id} onMouseDown={(event) => event.preventDefault()} onClick={() => addProduct(product)}><span>{product.item_name}</span><strong>{money(product.current_price)}</strong></button>)}{!matches.length && <p>No matching available products.</p>}</div>}
+      </div>
+      <div className="staff-order-items"><strong className="order-selected-heading">Selected items · {selected.length}</strong>{selected.map((product) => <div className="staff-order-item" key={product.id}><span>{product.item_name} · {money(product.current_price)}</span><div><button type="button" className="icon-button" aria-label={`Remove one ${product.item_name}`} onClick={() => changeQuantity(product.id, -1)}><Minus size={14}/></button><strong>{quantities[product.id]}</strong><button type="button" className="icon-button" aria-label={`Add one ${product.item_name}`} disabled={quantities[product.id] >= 100} onClick={() => changeQuantity(product.id, 1)}><Plus size={14}/></button><button type="button" className="icon-button remove-order-item" aria-label={`Remove ${product.item_name}`} onClick={() => setQuantities((current) => { const { [product.id]: _removed, ...remaining } = current; return remaining; })}><X size={14}/></button></div></div>)}{!selected.length && <p className="empty-copy">Search for products above to add them to this order.</p>}</div>
       {create.isError && <p className="error-text">{create.error.message}</p>}<button className="button button-primary" disabled={!selected.length || create.isPending}>Save staff order</button>
     </form></section>
     <section className="staff-panel card"><div className="staff-panel-heading"><div><span className="muted-label">PICKUP QUEUE</span><h3>Orders</h3></div><button className="button button-outline" onClick={() => void orders.refetch()}>Refresh</button></div>
