@@ -53,6 +53,7 @@ export const loginStaff = (username: string, password: string) => request<{ user
 export const logoutStaff = () => request<{ status: string }>("/api/staff/logout", { method: "POST" });
 export const getStaffProducts = () => request<StoreProduct[]>("/api/staff/products");
 export const saveStaffProduct = (product: Omit<StoreProduct, "id">) => request<StoreProduct>("/api/staff/products", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(product) });
+export const saveStaffProductsBulk = (products: (Omit<StoreProduct, "id"> & { id?: number })[]) => request<StoreProduct[]>("/api/staff/products/bulk", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ products }) });
 export const getStaffOrders = () => request<StoreOrder[]>("/api/staff/orders");
 export const createStaffOrder = (order: OrderDraft & { payment_status: "pending" | "paid" }) => request<StoreOrder>("/api/staff/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(order) });
 export const updateStaffOrder = (id: number, update: { status: string; payment_status?: string }) => request<StoreOrder>(`/api/staff/orders/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(update) });

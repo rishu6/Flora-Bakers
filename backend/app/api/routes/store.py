@@ -17,7 +17,7 @@ from app.core.auth import SESSION_COOKIE, SESSION_SECONDS, issue_session, requir
 from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import CustomerFeedback, CustomerOrder, CustomerOrderItem, Product
-from app.schemas.store import CustomerOrderInput, FeedbackInput, OrderStatusInput, ProductInput, StaffLogin, StaffOrderInput
+from app.schemas.store import BulkProductInput, CustomerOrderInput, FeedbackInput, OrderStatusInput, ProductInput, StaffLogin, StaffOrderInput
 
 store_router = APIRouter(prefix="/store", tags=["storefront"])
 staff_router = APIRouter(prefix="/staff", tags=["staff"])
@@ -158,6 +158,40 @@ def save_product(data: ProductInput, _: str = Depends(require_staff), db: Sessio
     db.commit()
     db.refresh(product)
     return _product(product)
+
+
+@staff_router.put("/products/bulk")
+def save_products_bulk(data: BulkProductInput, _: str = Depends(require_staff), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    normalized_names = [" ".join(item.item_name.split()) for item in data.products]
+    if any(not name for name in normalized_names):
+        raise HTTPException(422, "Every menu item needs a product name.")
+    if len({name.casefold() for name in normalized_names}) != len(normalized_names):
+        raise HTTPException(422, "Each product name can appear only once in the menu.")
+
+    existing = db.scalars(select(Product)).all()
+    by_id = {product.id: product for product in existing}
+    by_name = {product.item_name.casefold(): product for product in existing}
+    results: list[Product] = []
+    for item, name in zip(data.products, normalized_names):
+        if item.id is not None and item.id not in by_id:
+            raise HTTPException(404, "A menu item changed since this page loaded. Refresh the menu and try again.")
+        product = by_id.get(item.id) if item.id is not None else by_name.get(name.casefold())
+        name_owner = by_name.get(name.casefold())
+        if name_owner is not None and name_owner is not product:
+            raise HTTPException(409, f"A different menu item already uses the name ‘{name}’.")
+        if product is None:
+            product = Product(item_name=name, current_price=item.current_price, available=item.available)
+            db.add(product)
+        else:
+            product.item_name = name
+            product.current_price = item.current_price
+            product.available = item.available
+        by_name[name.casefold()] = product
+        results.append(product)
+    db.commit()
+    for product in results:
+        db.refresh(product)
+    return [_product(product) for product in results]
 
 
 @staff_router.post("/orders", status_code=status.HTTP_201_CREATED)

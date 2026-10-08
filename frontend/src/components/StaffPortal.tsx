@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, LogOut, MessageSquareText, Package, Plus, ShieldCheck, X } from "lucide-react";
-import { createStaffOrder, getStaffFeedback, getStaffOrders, getStaffProducts, getStaffSession, importStaffFeedback, loginStaff, logoutStaff, saveStaffProduct, updateStaffOrder, type OrderDraft } from "../services/api";
+import { ClipboardList, LogOut, MessageSquareText, Package, Plus, ShieldCheck, Trash2, X } from "lucide-react";
+import { createStaffOrder, getStaffFeedback, getStaffOrders, getStaffProducts, getStaffSession, importStaffFeedback, loginStaff, logoutStaff, saveStaffProductsBulk, updateStaffOrder, type OrderDraft, type StoreProduct } from "../services/api";
 
 type StaffTab = "orders" | "products" | "feedback";
 const money = (value: number) => new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(value);
@@ -38,21 +38,17 @@ function StaffWorkspace({ username }: { username: string }) {
 function StaffProducts() {
   const client = useQueryClient();
   const products = useQuery({ queryKey: ["staff-products"], queryFn: getStaffProducts });
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState("");
-  const save = useMutation({ mutationFn: saveStaffProduct, onSuccess: async () => { setName(""); setPrice(""); await Promise.all([client.invalidateQueries({ queryKey: ["staff-products"] }), client.invalidateQueries({ queryKey: ["store-products"] })]); } });
-  return <div className="staff-panel card"><div className="staff-panel-heading"><div><span className="muted-label">CUSTOMER MENU</span><h3>Set prices and availability</h3></div><p>Uploaded sales items appear here as drafts. Set the current price and publish each item customers can order.</p></div>
-    <form className="product-add-form" onSubmit={(event) => { event.preventDefault(); save.mutate({ item_name: name, current_price: Number(price), available: false }); }}><label>Product name<input required maxLength={200} value={name} onChange={(event) => setName(event.target.value)}/></label><label>Current price<input required type="number" min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)}/></label><button className="button button-primary" disabled={save.isPending}><Plus size={15}/> Add product</button></form>
-    {products.isError && <p className="error-text">{products.error.message}</p>}{save.isError && <p className="error-text">{save.error.message}</p>}
-    <div className="staff-product-list">{products.data?.map((product) => <ProductPriceRow key={product.id} item={product.item_name} price={product.current_price} available={product.available} onSave={(nextPrice, available) => save.mutate({ item_name: product.item_name, current_price: nextPrice, available })}/>)}</div>
-    {!products.data?.length && !products.isLoading && <p className="empty-copy">Upload a sales workbook to seed product names, or add your menu items above.</p>}
+  const [rows, setRows] = useState<(StoreProduct & { key: string })[]>([]);
+  useEffect(() => { if (products.data) setRows(products.data.map((product) => ({ ...product, key: `product-${product.id}` }))); }, [products.data]);
+  const save = useMutation({ mutationFn: saveStaffProductsBulk, onSuccess: async (saved) => { setRows(saved.map((product) => ({ ...product, key: `product-${product.id}` }))); await Promise.all([client.invalidateQueries({ queryKey: ["staff-products"] }), client.invalidateQueries({ queryKey: ["store-products"] })]); } });
+  const updateRow = (key: string, update: Partial<StoreProduct>) => setRows((current) => current.map((row) => row.key === key ? { ...row, ...update } : row));
+  const addRow = () => setRows((current) => [...current, { id: 0, key: `draft-${Date.now()}-${current.length}`, item_name: "", current_price: 0, available: false }]);
+  return <div className="staff-panel card"><div className="staff-panel-heading"><div><span className="muted-label">CUSTOMER MENU</span><h3>Build your menu in one go</h3></div><p>Add or edit multiple items below, set prices and availability, then save everything together. Uploaded sales items appear as drafts.</p></div>
+    <div className="menu-bulk-actions"><button className="button button-outline" type="button" onClick={addRow}><Plus size={15}/> Add menu item</button><button className="button button-primary" type="button" disabled={save.isPending || products.isLoading || !rows.length} onClick={() => save.mutate(rows.map(({ id, item_name, current_price, available }) => ({ ...(id ? { id } : {}), item_name, current_price: Number(current_price), available })))}>{save.isPending ? "Saving menu…" : `Save all ${rows.length} items`}</button></div>
+    {products.isLoading && <p className="empty-copy">Loading your menu…</p>}{products.isError && <p className="error-text">{products.error.message}</p>}{save.isError && <p className="error-text">{save.error.message}</p>}{save.isSuccess && <p className="inline-note">All menu changes saved.</p>}
+    <div className="staff-product-list">{rows.map((row) => <div className="staff-product-row" key={row.key}><label className="menu-item-name">Product name<input required maxLength={200} value={row.item_name} onChange={(event) => updateRow(row.key, { item_name: event.target.value })} placeholder="e.g. Chocolate croissant"/></label><label>Current price<input required type="number" min="0" step="0.01" value={row.current_price} onChange={(event) => updateRow(row.key, { current_price: Number(event.target.value) })}/></label><label className="availability-toggle"><input type="checkbox" checked={row.available} onChange={(event) => updateRow(row.key, { available: event.target.checked })}/> Available to order</label><button className="icon-button menu-remove" type="button" aria-label={row.id ? `Make ${row.item_name} unavailable` : "Remove new menu item"} title={row.id ? "Make unavailable" : "Remove row"} onClick={() => row.id ? updateRow(row.key, { available: false }) : setRows((current) => current.filter((item) => item.key !== row.key))}>{row.id ? "Hide" : <Trash2 size={15}/>}</button></div>)}</div>
+    {!rows.length && !products.isLoading && <p className="empty-copy">No menu items yet. Add several items, then save them together.</p>}
   </div>;
-}
-
-function ProductPriceRow({ item, price, available, onSave }: { item: string; price: number; available: boolean; onSave: (price: number, available: boolean) => void }) {
-  const [nextPrice, setNextPrice] = useState(String(price));
-  const [nextAvailable, setNextAvailable] = useState(available);
-  return <form className="staff-product-row" onSubmit={(event) => { event.preventDefault(); onSave(Number(nextPrice), nextAvailable); }}><strong>{item}</strong><label>Price<input type="number" min="0" step="0.01" value={nextPrice} onChange={(event) => setNextPrice(event.target.value)}/></label><label className="availability-toggle"><input type="checkbox" checked={nextAvailable} onChange={(event) => setNextAvailable(event.target.checked)}/> Available to order</label><button className="button button-outline">Save</button></form>;
 }
 
 function StaffOrders() {

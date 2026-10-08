@@ -16,6 +16,14 @@ class ProductInput(BaseModel):
     available: bool = False
 
 
+class BulkProductItem(ProductInput):
+    id: int | None = Field(default=None, gt=0)
+
+
+class BulkProductInput(BaseModel):
+    products: list[BulkProductItem] = Field(min_length=1, max_length=500)
+
+
 class ProductResponse(ProductInput):
     id: int
 
