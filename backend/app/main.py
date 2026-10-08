@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.logging import configure_logging
 from app.api.routes.analytics import router as analytics_router
 from app.api.routes.uploads import router as uploads_router
+from app.api.routes.store import staff_router, store_router
 from app.db.database import Base, engine
 from app.db import models  # noqa: F401 - registers ORM models with Base
 
@@ -32,13 +33,15 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
 api_router = APIRouter(prefix=settings.api_prefix)
 api_router.include_router(uploads_router)
 api_router.include_router(analytics_router)
+api_router.include_router(store_router)
+api_router.include_router(staff_router)
 app.include_router(api_router)
 
 

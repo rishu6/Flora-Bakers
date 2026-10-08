@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     api_prefix: str = "/api"
     database_url: str = "sqlite:///./flora_bakes.db"
     secret_key: SecretStr = SecretStr("development-only-change-me")
+    staff_username: str = ""
+    staff_password: SecretStr = SecretStr("")
     cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["http://localhost:5173"])
     max_upload_size_mb: int = Field(default=20, ge=1, le=100)
     upload_directory: Path = Path("uploads")

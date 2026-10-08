@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.db.models import UploadBatch
+from app.db.models import SalesRecord, UploadBatch
 from app.schemas.analytics import DashboardResponse
 from app.services.analytics_service import build_dashboard
 
@@ -41,6 +41,32 @@ def dashboard(
     if time_from and time_to and time_from > time_to:
         raise HTTPException(422, "time_from must be on or before time_to.")
     return _dashboard(upload_id, db, date_from, date_to, item, day, time_from, time_to, granularity)
+
+
+@router.get("/analytics/repeat-demand/{upload_id}")
+def repeat_demand(upload_id: int, db: Session = Depends(get_db)) -> dict:
+    if db.get(UploadBatch, upload_id) is None:
+        raise HTTPException(404, "Upload batch not found.")
+    records = db.scalars(select(SalesRecord).where(SalesRecord.upload_batch_id == upload_id).order_by(SalesRecord.sale_date)).all()
+    grouped: dict[str, list[SalesRecord]] = {}
+    for record in records:
+        grouped.setdefault(record.item_name, []).append(record)
+    rows = []
+    for item, item_records in grouped.items():
+        first_day = item_records[0].sale_date
+        last_day = item_records[-1].sale_date
+        span = max((last_day - first_day).days + 1, 1)
+        transactions = len(item_records)
+        rows.append({
+            "item": item,
+            "transactions": transactions,
+            "active_days": len({record.sale_date for record in item_records}),
+            "sales_per_week": round(transactions / span * 7, 2),
+            "average_days_between_sales": round((last_day - first_day).days / (transactions - 1), 1) if transactions > 1 else None,
+            "last_sale_date": last_day.isoformat(),
+        })
+    rows.sort(key=lambda row: (-row["sales_per_week"], row["item"].casefold()))
+    return {"upload_id": upload_id, "span_days": (max((record.sale_date for record in records)) - min((record.sale_date for record in records))).days + 1 if records else 0, "items": rows}
 
 
 @router.get("/analytics/top-items/{upload_id}", include_in_schema=False)

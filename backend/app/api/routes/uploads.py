@@ -4,12 +4,12 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.database import get_db
-from app.db.models import SalesRecord, UploadBatch
+from app.db.models import Product, SalesRecord, UploadBatch
 from app.schemas.upload import UploadBatchResponse
 from app.services.excel_service import parse_workbook
 
@@ -59,7 +59,15 @@ async def upload_sales_file(file: UploadFile = File(...), db: Session = Depends(
         validation_report=json.dumps(report, default=str),
         waste_available=report["waste_available"],
     )
+    seen_products: set[str] = set()
     for row in parsed["rows"]:
+        item_name = row["item_name"]
+        normalized_name = item_name.casefold()
+        if normalized_name not in seen_products:
+            existing_product = db.scalar(select(Product).where(func.lower(Product.item_name) == item_name.strip().lower()))
+            if existing_product is None:
+                db.add(Product(item_name=item_name.strip(), current_price=row["sales_price"], available=False))
+            seen_products.add(normalized_name)
         batch.records.append(SalesRecord(**{key: value for key, value in row.items() if key != "duplicate"}))
     db.add(batch)
     db.commit()
