@@ -21,6 +21,6 @@ export function CustomerStorefront() {
     <section className="customer-intro"><span className="customer-eyebrow">A FLORA BAKES FAVOURITE</span><h2>Choose your treat.</h2><p>Browse the menu, add your favourites, and send us a pickup request.</p></section>
     <div className="customer-order-wrap" id="customer-menu"><OrderShop/></div>
 
-    <footer className="customer-footer" id="pickup-info"><div><a className="customer-brand" href="/?view=customer"><span className="customer-brand-mark"><CakeSlice size={20}/></span><span>flora<span>bakes</span><small>BAKERY &amp; PATISSERIE</small></span></a><p>Good things are baking.</p></div><div><strong>Pickup orders</strong><p>Choose a preferred pickup time when you order. The bakery will confirm your request and payment directly with you. Payment is not collected online.</p></div><a href="#customer-menu">Back to menu ↑</a></footer>
+    <footer className="customer-footer" id="pickup-info"><div><a className="customer-brand" href="/?view=customer"><span className="customer-brand-mark"><CakeSlice size={20}/></span><span>flora<span>bakes</span><small>BAKERY &amp; PATISSERIE</small></span></a><p>Good things are baking.</p><a href="/images/products/credits.html" target="_blank" rel="noreferrer">Product image credits</a></div><div><strong>Pickup orders</strong><p>Choose a preferred pickup time when you order. The bakery will confirm your request and payment directly with you. Payment is not collected online.</p></div><a href="#customer-menu">Back to menu ↑</a></footer>
   </main>;
 }

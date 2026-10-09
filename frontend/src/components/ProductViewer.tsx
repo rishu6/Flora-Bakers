@@ -57,9 +57,9 @@ export function ProductViewer({ batch, data, filters }: Props) {
 
     <div className="product-detail-main">
       <article className="product-hero card">
-        <img className="product-hero-image" src={photo.url} alt={`Illustrative ${photo.label} bakery photo`} />
+        <img className="product-hero-image" src={photo.url} alt={`Representative ${photo.label} image`} />
         <div className="product-hero-shade"/>
-        <div className="product-hero-copy"><span className="product-hero-kicker"><CakeSlice size={14}/> PRODUCT ANALYSIS</span><h2>{selected?.item}</h2><p>{integer(selected?.transactions ?? 0)} transactions in this dataset</p><a href={photo.source} target="_blank" rel="noreferrer">Illustrative {photo.label} photo · Unsplash</a></div>
+        <div className="product-hero-copy"><span className="product-hero-kicker"><CakeSlice size={14}/> PRODUCT ANALYSIS</span><h2>{selected?.item}</h2><p>{integer(selected?.transactions ?? 0)} transactions in this dataset</p><a href={photo.source} target="_blank" rel="noreferrer">{photo.label} · {photo.provider}</a></div>
       </article>
 
       {detail.isLoading && <div className="loading-panel card"><div className="skeleton wide"/><p>Loading product analysis…</p></div>}
@@ -82,7 +82,7 @@ export function ProductViewer({ batch, data, filters }: Props) {
           <p className="product-pattern-note">{bestDay ? `${bestDay.day} is the strongest day for ${selected?.item} in this dataset.` : "Upload more sales to reveal this product’s weekly pattern."}</p>
         </article>
       </>}
-      <p className="product-image-note">Product photos are generic category illustrations; they may not depict the exact item sold.</p>
+      <p className="product-image-note">Images illustrate the named products. <a href="/images/products/credits.html" target="_blank" rel="noreferrer">Image credits</a></p>
     </div>
   </section>;
 }
