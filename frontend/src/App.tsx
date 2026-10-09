@@ -7,6 +7,7 @@ import { ProductViewer } from "./components/ProductViewer";
 import { RepeatDemand } from "./components/RepeatDemand";
 import { OrderShop } from "./components/OrderShop";
 import { StaffPortal } from "./components/StaffPortal";
+import { CustomerStorefront } from "./components/CustomerStorefront";
 import { UploadPanel } from "./components/UploadPanel";
 import { getDashboard, getUploads, uploadWorkbook } from "./services/api";
 import type { UploadBatch } from "./types";
@@ -29,6 +30,11 @@ const queryParams = (filters: DashboardFilters, granularity: string) => {
 };
 
 export function App() {
+  if (new URLSearchParams(window.location.search).get("view") === "customer") return <CustomerStorefront/>;
+  return <BusinessWorkspace/>;
+}
+
+function BusinessWorkspace() {
   const client = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [activeView, setActiveView] = useState<WorkspaceView>("dashboard");
@@ -60,7 +66,7 @@ export function App() {
       <button className={`nav-item ${activeView === "suggestions" ? "nav-active" : ""}`} onClick={() => setActiveView("suggestions")}><Lightbulb size={17}/> Sales suggestions</button>
       <button className={`nav-item ${activeView === "products" ? "nav-active" : ""}`} onClick={() => setActiveView("products")}><CakeSlice size={17}/> Product viewer</button>
       <button className={`nav-item ${activeView === "repeat" ? "nav-active" : ""}`} onClick={() => setActiveView("repeat")}><BarChart3 size={17}/> Repeat item demand</button>
-      <button className={`nav-item ${activeView === "shop" ? "nav-active" : ""}`} onClick={() => setActiveView("shop")}><UploadCloud size={17}/> Order for pickup</button>
+      <a className="nav-item" href="/?view=customer"><CakeSlice size={17}/> Customer storefront</a>
       <button className={`nav-item ${activeView === "staff" ? "nav-active" : ""}`} onClick={() => setActiveView("staff")}><ShieldCheck size={17}/> Staff portal</button>
       <button className="nav-item" onClick={() => setShowUploader(true)}><UploadCloud size={17}/> Import sales</button>
       <div className="sidebar-bottom"><div className="sidebar-note"><span className="note-mark">✦</span><strong>Good things<br/>are baking.</strong><p>Make every sales decision with a little more clarity.</p></div><span className="sidebar-version">FLORA BAKES <i/> SALES STUDIO</span></div>
