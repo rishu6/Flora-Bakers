@@ -41,12 +41,13 @@ export interface StoreProduct { id: number; item_name: string; current_price: nu
 export interface OrderLine { product_id: number; quantity: number; }
 export interface OrderDraft { customer_name: string; customer_phone: string; pickup_at: string | null; items: OrderLine[]; }
 export interface StoreOrder { id: number; public_code: string; customer_name: string; customer_phone: string; pickup_at: string | null; channel: string; status: string; payment_status: string; total: number; created_at: string; items: { product_name: string; quantity: number; unit_price: number; line_total: number }[]; }
+export type PublicStoreOrder = Pick<StoreOrder, "public_code" | "status" | "payment_status" | "pickup_at" | "total"> & { items: { product_name: string; quantity: number; line_total: number }[] };
 export interface FeedbackSummary { responses: { id: number; product_name: string; rating: number; comment: string; source: string; created_at: string }[]; suggestions: { item: string; kind: string; title: string; detail: string }[]; total_responses: number; }
 
 export const getRepeatDemand = (id: number) => request<{ upload_id: number; span_days: number; items: { item: string; transactions: number; active_days: number; sales_per_week: number; average_days_between_sales: number | null; last_sale_date: string }[] }>(`/api/analytics/repeat-demand/${id}`);
 export const getStoreProducts = () => request<StoreProduct[]>("/api/store/products");
 export const placeCustomerOrder = (order: OrderDraft) => request<StoreOrder>("/api/store/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(order) });
-export const trackCustomerOrder = (code: string) => request<{ public_code: string; status: string; payment_status: string; pickup_at: string | null; total: number; items: { product_name: string; quantity: number; line_total: number }[] }>(`/api/store/orders/${encodeURIComponent(code)}`);
+export const trackCustomerOrder = (code: string) => request<PublicStoreOrder>(`/api/store/orders/${encodeURIComponent(code)}`);
 export const submitOrderFeedback = (code: string, feedback: { product_name: string; rating: number; comment: string }) => request<{ status: string }>(`/api/store/orders/${encodeURIComponent(code)}/feedback`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(feedback) });
 export const getStaffSession = () => request<{ username: string }>("/api/staff/session");
 export const loginStaff = (username: string, password: string) => request<{ username: string }>("/api/staff/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
