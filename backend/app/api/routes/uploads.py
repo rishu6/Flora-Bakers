@@ -2,16 +2,20 @@
 
 import json
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from fastapi.responses import Response
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
+from app.core.auth import require_staff
 from app.db.database import get_db
-from app.db.models import Product, SalesRecord, UploadBatch
+from app.db.models import SalesRecord, UploadBatch, UploadWorkbook
 from app.schemas.upload import UploadBatchResponse
 from app.services.excel_service import parse_workbook
+from app.services.product_service import add_uploaded_products
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
 ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
@@ -26,6 +30,7 @@ ALLOWED_MIME_TYPES = {
 def _response(batch: UploadBatch) -> dict:
     result = {column.name: getattr(batch, column.name) for column in batch.__table__.columns}
     result["validation_report"] = json.loads(batch.validation_report)
+    result["original_file_saved"] = batch.workbook is not None
     return result
 
 
@@ -48,6 +53,9 @@ async def upload_sales_file(file: UploadFile = File(...), db: Session = Depends(
         raise HTTPException(422, str(exc)) from exc
 
     report = parsed["report"]
+    added, existing = add_uploaded_products(db, parsed["rows"])
+    report["products_added"] = added
+    report["products_existing"] = existing
     batch = UploadBatch(
         original_filename=filename,
         total_records=report["total_rows"],
@@ -58,16 +66,9 @@ async def upload_sales_file(file: UploadFile = File(...), db: Session = Depends(
         status="ready" if report["valid_rows"] else "needs_review",
         validation_report=json.dumps(report, default=str),
         waste_available=report["waste_available"],
+        workbook=UploadWorkbook(contents=contents),
     )
-    seen_products: set[str] = set()
     for row in parsed["rows"]:
-        item_name = row["item_name"]
-        normalized_name = item_name.casefold()
-        if normalized_name not in seen_products:
-            existing_product = db.scalar(select(Product).where(func.lower(Product.item_name) == item_name.strip().lower()))
-            if existing_product is None:
-                db.add(Product(item_name=item_name.strip(), current_price=row["sales_price"], available=False))
-            seen_products.add(normalized_name)
         batch.records.append(SalesRecord(**{key: value for key, value in row.items() if key != "duplicate"}))
     db.add(batch)
     db.commit()
@@ -77,7 +78,7 @@ async def upload_sales_file(file: UploadFile = File(...), db: Session = Depends(
 
 @router.get("", response_model=list[UploadBatchResponse])
 def list_uploads(db: Session = Depends(get_db)):
-    batches = db.scalars(select(UploadBatch).order_by(UploadBatch.uploaded_at.desc())).all()
+    batches = db.scalars(select(UploadBatch).options(selectinload(UploadBatch.workbook)).order_by(UploadBatch.uploaded_at.desc())).all()
     return [_response(batch) for batch in batches]
 
 
@@ -87,3 +88,23 @@ def get_upload(upload_id: int, db: Session = Depends(get_db)):
     if batch is None:
         raise HTTPException(404, "Upload batch not found.")
     return _response(batch)
+
+
+@router.get("/{upload_id}/file")
+def download_original_workbook(upload_id: int, _: str = Depends(require_staff), db: Session = Depends(get_db)):
+    batch = db.get(UploadBatch, upload_id)
+    if batch is None:
+        raise HTTPException(404, "Upload batch not found.")
+    if batch.workbook is None:
+        raise HTTPException(404, "The original file was not archived for this older upload. Its saved sales data is still available.")
+    filename = batch.original_filename
+    media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if filename.lower().endswith(".xlsx") else "application/vnd.ms-excel"
+    return Response(
+        content=batch.workbook.contents,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename, safe='')}",
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )

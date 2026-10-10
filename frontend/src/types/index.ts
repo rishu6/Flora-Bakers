@@ -7,6 +7,8 @@ export interface UploadReport {
   waste_available: boolean;
   issues: { row_number: number; reasons: string[]; values: Record<string, string> }[];
   warnings: string[];
+  products_added?: number | null;
+  products_existing?: number | null;
 }
 
 export interface UploadBatch {
@@ -20,6 +22,7 @@ export interface UploadBatch {
   missing_value_records: number;
   status: string;
   waste_available: boolean;
+  original_file_saved?: boolean;
   validation_report: UploadReport;
 }
 

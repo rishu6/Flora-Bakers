@@ -18,6 +18,8 @@ class ValidationReport(BaseModel):
     waste_available: bool
     issues: list[RowIssue]
     warnings: list[str]
+    products_added: int | None = None
+    products_existing: int | None = None
 
 
 class UploadBatchResponse(BaseModel):
@@ -33,4 +35,5 @@ class UploadBatchResponse(BaseModel):
     missing_value_records: int
     status: str
     waste_available: bool
+    original_file_saved: bool = False
     validation_report: ValidationReport

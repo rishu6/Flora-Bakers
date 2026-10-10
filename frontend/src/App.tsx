@@ -6,7 +6,7 @@ import { Dashboard, type DashboardFilters } from "./components/Dashboard";
 import { ProductViewer } from "./components/ProductViewer";
 import { RepeatDemand } from "./components/RepeatDemand";
 import { OrderShop } from "./components/OrderShop";
-import { StaffPortal } from "./components/StaffPortal";
+import { StaffPortal, type StaffTab } from "./components/StaffPortal";
 import { CustomerStorefront } from "./components/CustomerStorefront";
 import { UploadPanel } from "./components/UploadPanel";
 import { getDashboard, getUploads, uploadWorkbook } from "./services/api";
@@ -38,6 +38,7 @@ function BusinessWorkspace() {
   const client = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [activeView, setActiveView] = useState<WorkspaceView>("dashboard");
+  const [staffInitialTab, setStaffInitialTab] = useState<StaffTab>("orders");
   const [justUploaded, setJustUploaded] = useState<UploadBatch | null>(null);
   const [filters, setFilters] = useState(emptyFilters);
   const [granularity, setGranularity] = useState("daily");
@@ -51,7 +52,7 @@ function BusinessWorkspace() {
   useEffect(() => { document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("flora-theme", dark ? "dark" : "light"); }, [dark]);
   const params = useMemo(() => queryParams(filters, granularity), [filters, granularity]);
   const dashboard = useQuery({ queryKey: ["dashboard", batch?.id, params.toString()], queryFn: () => getDashboard(batch!.id, params), enabled: Boolean(batch?.valid_records) && activeView !== "shop" && activeView !== "staff" });
-  const upload = useMutation({ mutationFn: uploadWorkbook, onSuccess: async (uploaded) => { setJustUploaded(uploaded); setSelectedId(uploaded.id); setFilters(emptyFilters); setActiveView("dashboard"); setShowUploader(true); await client.invalidateQueries({ queryKey: ["uploads"] }); } });
+  const upload = useMutation({ mutationFn: uploadWorkbook, onSuccess: async (uploaded) => { setJustUploaded(uploaded); setSelectedId(uploaded.id); setFilters(emptyFilters); setActiveView("dashboard"); setShowUploader(true); await Promise.all([client.invalidateQueries({ queryKey: ["uploads"] }), client.invalidateQueries({ queryKey: ["staff-products"] }), client.invalidateQueries({ queryKey: ["store-products"] })]); } });
 
   const doUpload = async (file: File): Promise<UploadBatch> => upload.mutateAsync(file);
   const refresh = () => { void client.invalidateQueries({ queryKey: ["dashboard", batch?.id] }); void client.invalidateQueries({ queryKey: ["uploads"] }); };
@@ -67,7 +68,7 @@ function BusinessWorkspace() {
       <button className={`nav-item ${activeView === "products" ? "nav-active" : ""}`} onClick={() => setActiveView("products")}><CakeSlice size={17}/> Product viewer</button>
       <button className={`nav-item ${activeView === "repeat" ? "nav-active" : ""}`} onClick={() => setActiveView("repeat")}><BarChart3 size={17}/> Repeat item demand</button>
       <a className="nav-item" href="/?view=customer"><CakeSlice size={17}/> Customer storefront</a>
-      <button className={`nav-item ${activeView === "staff" ? "nav-active" : ""}`} onClick={() => setActiveView("staff")}><ShieldCheck size={17}/> Staff portal</button>
+      <button className={`nav-item ${activeView === "staff" ? "nav-active" : ""}`} onClick={() => { setStaffInitialTab("orders"); setActiveView("staff"); }}><ShieldCheck size={17}/> Staff portal</button>
       <button className="nav-item" onClick={() => setShowUploader(true)}><UploadCloud size={17}/> Import sales</button>
       <div className="sidebar-bottom"><div className="sidebar-note"><span className="note-mark">✦</span><strong>Good things<br/>are baking.</strong><p>Make every sales decision with a little more clarity.</p></div><span className="sidebar-version">FLORA BAKES <i/> SALES STUDIO</span></div>
     </aside>
@@ -77,14 +78,14 @@ function BusinessWorkspace() {
       <motion.div className="page-content" initial={{ opacity: 0, y: 7 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: "easeOut" }}>
         <section className="page-heading"><div><div className="heading-kicker"><span className="heading-flower">✿</span> A FRESH LOOK AT YOUR BUSINESS</div><h1>{viewDetails[activeView].title}<span>.</span></h1><p>{viewDetails[activeView].subtitle}</p></div><div className="heading-date">{new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(new Date())}</div></section>
         {helpOpen && <div className="help-banner"><strong>Workbook format</strong><span>Required: Item Name, Sale Date, Sales Price and Sales Time. Column capitalization and common aliases are accepted. The weekday is recalculated from the sale date.</span><button className="text-button" onClick={() => setHelpOpen(false)}>Got it</button></div>}
-        {showUploader && <UploadPanel onUpload={doUpload} onClose={() => setShowUploader(false)}/>}
+        {showUploader && <UploadPanel onUpload={doUpload} onClose={() => setShowUploader(false)} onManageProducts={() => { setStaffInitialTab("products"); setActiveView("staff"); setShowUploader(false); }} onSavedUploads={() => { setStaffInitialTab("uploads"); setActiveView("staff"); setShowUploader(false); }}/>}
         {uploads.isLoading && <div className="loading-panel card"><div className="skeleton wide"/><div className="skeleton"/><p>Preparing your sales workspace…</p></div>}
         {uploads.isError && <div className="state-card card"><h2>We couldn’t load your datasets</h2><p>{uploads.error.message}</p><button className="button button-outline" onClick={() => void uploads.refetch()}>Try again</button></div>}
         {batch && batch.valid_records === 0 && !showUploader && <div className="state-card card"><h2>This workbook needs a few fixes</h2><p>No valid sales rows were found. Open the upload report, correct the listed rows, and upload the workbook again.</p><button className="button button-outline" onClick={() => setShowUploader(true)}>Review upload report</button></div>}
         {!uploads.isLoading && !uploads.isError && !batch && activeView !== "shop" && activeView !== "staff" && <section className="welcome-card"><div className="welcome-copy"><span className="section-eyebrow">YOUR BAKERY, IN BETTER FOCUS</span><h2>A little data.<br/><em>A lot more clarity.</em></h2><p>Start with your sales workbook. Flora Bakes will validate every row, keep duplicates visible, and turn your real sales into a clear view of your business.</p><button className="button button-primary" onClick={() => setShowUploader(true)}>Upload your first workbook <ArrowRight size={16}/></button><small>Excel .xlsx or .xls · Up to 20 MB</small></div><div className="welcome-art"><div className="art-orbit orbit-one"/><div className="art-orbit orbit-two"/><div className="art-center"><CakeSlice size={48}/><span>fresh<br/>insights</span></div><div className="art-float float-top"><span>✦</span> Real sales data</div><div className="art-float float-bottom"><span>↗</span> Better decisions</div></div></section>}
         {upload.isError && <div className="global-error" role="alert">{upload.error.message}</div>}
         {activeView === "shop" && <OrderShop/>}
-        {activeView === "staff" && <StaffPortal/>}
+        {activeView === "staff" && <StaffPortal initialTab={staffInitialTab}/>}
         {activeView !== "shop" && activeView !== "staff" && batch && <>{dashboard.isLoading && <div className="loading-panel card"><div className="skeleton wide"/><div className="skeleton"/><p>Crunching the numbers…</p></div>}{dashboard.isError && <div className="state-card card"><h2>Analytics couldn’t load</h2><p>{dashboard.error.message}</p><button className="button button-outline" onClick={() => void dashboard.refetch()}>Retry dashboard</button></div>}{dashboard.data && (activeView === "products" ? <ProductViewer batch={batch} data={dashboard.data} filters={filters}/> : activeView === "repeat" ? <RepeatDemand uploadId={batch.id}/> : activeView === "dashboard" || activeView === "report" || activeView === "suggestions" ? <Dashboard data={dashboard.data} batch={batch} onRefresh={refresh} filters={filters} onFiltersChange={setFilters} granularity={granularity} onGranularityChange={setGranularity} view={activeView}/> : null)}</>}
       </motion.div>
     </main>

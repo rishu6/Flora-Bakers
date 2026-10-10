@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, LogOut, MessageSquareText, Minus, Package, Plus, ShieldCheck, Trash2, X } from "lucide-react";
+import { ClipboardList, FolderArchive, LogOut, MessageSquareText, Minus, Package, Plus, ShieldCheck, Trash2, X } from "lucide-react";
 import { createStaffOrder, getStaffFeedback, getStaffOrders, getStaffProducts, getStaffSession, importStaffFeedback, loginStaff, logoutStaff, saveStaffProductsBulk, updateStaffOrder, type OrderDraft, type StoreProduct } from "../services/api";
 
-type StaffTab = "orders" | "products" | "feedback";
+import { SavedUploads } from "./SavedUploads";
+
+export type StaffTab = "orders" | "products" | "feedback" | "uploads";
 const money = (value: number) => new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(value);
 const orderStatuses = ["new", "confirmed", "preparing", "ready", "completed", "cancelled"];
 
-export function StaffPortal() {
+export function StaffPortal({ initialTab = "orders" }: { initialTab?: StaffTab }) {
   const client = useQueryClient();
   const session = useQuery({ queryKey: ["staff-session"], queryFn: getStaffSession, retry: false, staleTime: 60_000 });
   const [username, setUsername] = useState("");
@@ -17,11 +19,11 @@ export function StaffPortal() {
   if (session.isLoading) return <div className="loading-panel card"><p>Checking staff access…</p></div>;
   if (session.isError || !session.data) return <section className="staff-login card"><span className="insight-icon"><ShieldCheck size={20}/></span><span className="section-eyebrow">STAFF ONLY</span><h2>Sign in to manage the bakery</h2><p>Orders, contact details, menu prices, and customer feedback are restricted to staff.</p><form onSubmit={(event) => { event.preventDefault(); login.mutate(); }}><label>Username<input required autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)}/></label><label>Password<input required type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)}/></label>{login.isError && <p className="error-text">{login.error.message}</p>}<button className="button button-primary" disabled={login.isPending}>{login.isPending ? "Signing in…" : "Sign in"}</button></form></section>;
 
-  return <StaffWorkspace username={session.data.username}/>;
+  return <StaffWorkspace username={session.data.username} initialTab={initialTab}/>;
 }
 
-function StaffWorkspace({ username }: { username: string }) {
-  const [tab, setTab] = useState<StaffTab>("orders");
+function StaffWorkspace({ username, initialTab }: { username: string; initialTab: StaffTab }) {
+  const [tab, setTab] = useState<StaffTab>(initialTab);
   const [showSuggestionPopup, setShowSuggestionPopup] = useState(true);
   const client = useQueryClient();
   const feedback = useQuery({ queryKey: ["staff-feedback"], queryFn: getStaffFeedback, refetchInterval: 60_000 });
@@ -30,26 +32,56 @@ function StaffWorkspace({ username }: { username: string }) {
   return <section className="staff-workspace">
     {showSuggestionPopup && firstSuggestion && <div className="suggestion-modal-backdrop" role="presentation"><section className="suggestion-modal card" role="dialog" aria-modal="true" aria-labelledby="suggestion-title"><button className="icon-button suggestion-dismiss" aria-label="Dismiss suggestion" onClick={() => setShowSuggestionPopup(false)}><X size={17}/></button><span className={`suggestion-badge ${firstSuggestion.kind}`}>{firstSuggestion.kind === "attention" ? "FEEDBACK SIGNAL" : "CUSTOMER FAVOURITE"}</span><h2 id="suggestion-title">{firstSuggestion.title}: {firstSuggestion.item}</h2><p>{firstSuggestion.detail}</p><div><button className="button button-primary" onClick={() => { setTab("feedback"); setShowSuggestionPopup(false); }}>View feedback suggestions</button><button className="button button-quiet" onClick={() => setShowSuggestionPopup(false)}>Dismiss</button></div></section></div>}
     <div className="staff-toolbar card"><div><span className="section-eyebrow">BAKERY MANAGEMENT</span><h2>Signed in as {username}</h2></div><button className="button button-outline" onClick={() => logout.mutate()}><LogOut size={15}/> Sign out</button></div>
-    <div className="staff-tabs" role="tablist"><button className={tab === "orders" ? "active" : ""} onClick={() => setTab("orders")}><ClipboardList size={15}/> Orders</button><button className={tab === "products" ? "active" : ""} onClick={() => setTab("products")}><Package size={15}/> Menu &amp; prices</button><button className={tab === "feedback" ? "active" : ""} onClick={() => setTab("feedback")}><MessageSquareText size={15}/> Feedback &amp; suggestions</button></div>
-    {tab === "orders" && <StaffOrders/>}{tab === "products" && <StaffProducts/>}{tab === "feedback" && <StaffFeedback/>}
+    <div className="staff-tabs" role="tablist"><button className={tab === "orders" ? "active" : ""} onClick={() => setTab("orders")}><ClipboardList size={15}/> Orders</button><button className={tab === "products" ? "active" : ""} onClick={() => setTab("products")}><Package size={15}/> Menu &amp; prices</button><button className={tab === "feedback" ? "active" : ""} onClick={() => setTab("feedback")}><MessageSquareText size={15}/> Feedback &amp; suggestions</button><button className={tab === "uploads" ? "active" : ""} onClick={() => setTab("uploads")}><FolderArchive size={15}/> Saved uploads</button></div>
+    {tab === "orders" && <StaffOrders/>}{tab === "products" && <StaffProducts/>}{tab === "feedback" && <StaffFeedback/>}{tab === "uploads" && <SavedUploads onManageProducts={() => setTab("products")}/>}
   </section>;
 }
 
 function StaffProducts() {
   const client = useQueryClient();
   const products = useQuery({ queryKey: ["staff-products"], queryFn: getStaffProducts });
-  const [rows, setRows] = useState<(StoreProduct & { key: string })[]>([]);
-  useEffect(() => { if (products.data) setRows(products.data.map((product) => ({ ...product, key: `product-${product.id}` }))); }, [products.data]);
+  const [rows, setRows] = useState<(StoreProduct & { key: string; dirty?: boolean })[]>([]);
+  const pendingFocus = useRef<string | null>(null);
+  useEffect(() => {
+    if (!products.data) return;
+    setRows((current) => {
+      const byId = new Map(current.filter((row) => row.id).map((row) => [row.id, row]));
+      return [...products.data.map((product) => {
+        const edited = byId.get(product.id);
+        return edited?.dirty ? edited : { ...product, key: `product-${product.id}` };
+      }), ...current.filter((row) => !row.id)];
+    });
+  }, [products.data]);
+  useEffect(() => {
+    if (!pendingFocus.current) return;
+    const input = document.getElementById(`menu-name-${pendingFocus.current}`);
+    if (input) {
+      input.focus({ preventScroll: true });
+      input.scrollIntoView({ block: "center" });
+      pendingFocus.current = null;
+    }
+  }, [rows]);
   const save = useMutation({ mutationFn: saveStaffProductsBulk, onSuccess: async (saved) => { setRows(saved.map((product) => ({ ...product, key: `product-${product.id}` }))); await Promise.all([client.invalidateQueries({ queryKey: ["staff-products"] }), client.invalidateQueries({ queryKey: ["store-products"] })]); } });
   const publishAll = useMutation({ mutationFn: saveStaffProductsBulk, onSuccess: async (saved) => { setRows(saved.map((product) => ({ ...product, key: `product-${product.id}` }))); await Promise.all([client.invalidateQueries({ queryKey: ["staff-products"] }), client.invalidateQueries({ queryKey: ["store-products"] })]); } });
   const willPublishAll = !rows.length || rows.some((row) => !row.available);
-  const updateRow = (key: string, update: Partial<StoreProduct>) => setRows((current) => current.map((row) => row.key === key ? { ...row, ...update } : row));
-  const addRow = () => setRows((current) => [...current, { id: 0, key: `draft-${Date.now()}-${current.length}`, item_name: "", current_price: 0, available: false }]);
-  return <div className="staff-panel card"><div className="staff-panel-heading"><div><span className="muted-label">CUSTOMER MENU</span><h3>Build your menu in one go</h3></div><p>Add or edit multiple items below and set current prices. One click makes the whole menu available to customers. Uploaded sales items appear as drafts.</p></div>
-    <div className="menu-bulk-actions"><button className="button button-outline" type="button" onClick={addRow}><Plus size={15}/> Add menu item</button><div className="menu-save-actions"><button className="button button-outline" type="button" disabled={save.isPending || publishAll.isPending || products.isLoading || !rows.length} onClick={() => save.mutate(rows.map(({ id, item_name, current_price, available }) => ({ ...(id ? { id } : {}), item_name, current_price: Number(current_price), available })))}>{save.isPending ? "Saving menu…" : `Save all ${rows.length} items`}</button><button className="button button-primary" type="button" disabled={save.isPending || publishAll.isPending || products.isLoading || !rows.length} onClick={() => publishAll.mutate(rows.map(({ id, item_name, current_price }) => ({ ...(id ? { id } : {}), item_name, current_price: Number(current_price), available: willPublishAll })))}>{publishAll.isPending ? "Updating menu…" : willPublishAll ? `Make all ${rows.length} items available` : `Hide all ${rows.length} items`}</button></div></div>
+  const busy = save.isPending || publishAll.isPending;
+  const updateRow = (key: string, update: Partial<StoreProduct>) => {
+    save.reset(); publishAll.reset();
+    setRows((current) => current.map((row) => row.key === key ? { ...row, ...update, dirty: true } : row));
+  };
+  const addRow = () => {
+    const key = `draft-${Date.now()}-${rows.length}`;
+    pendingFocus.current = key;
+    save.reset(); publishAll.reset();
+    setRows((current) => [...current, { id: 0, key, item_name: "", current_price: 0, available: false, dirty: true }]);
+  };
+  return <div className="staff-panel card"><div className="staff-panel-heading"><div><span className="muted-label">CUSTOMER MENU</span><h3>Saved menu &amp; new products</h3></div><p>Products from valid uploaded sales rows are already saved. Add new products after your saved items, edit prices, then save all changes in one click.</p></div>
+    <div className="menu-bulk-actions"><button className="button button-outline" type="button" disabled={busy || products.isLoading || products.isError} onClick={addRow}><Plus size={15}/> Add new product</button><div className="menu-save-actions"><button className="button button-outline" type="button" disabled={save.isPending || publishAll.isPending || products.isLoading || !rows.length} onClick={() => save.mutate(rows.map(({ id, item_name, current_price, available }) => ({ ...(id ? { id } : {}), item_name, current_price: Number(current_price), available })))}>{save.isPending ? "Saving menu…" : `Save all ${rows.length} items`}</button><button className="button button-primary" type="button" disabled={save.isPending || publishAll.isPending || products.isLoading || !rows.length} onClick={() => publishAll.mutate(rows.map(({ id, item_name, current_price }) => ({ ...(id ? { id } : {}), item_name, current_price: Number(current_price), available: willPublishAll })))}>{publishAll.isPending ? "Updating menu…" : willPublishAll ? `Make all ${rows.length} items available` : `Hide all ${rows.length} items`}</button></div></div>
     {products.isLoading && <p className="empty-copy">Loading your menu…</p>}{products.isError && <p className="error-text">{products.error.message}</p>}{save.isError && <p className="error-text">{save.error.message}</p>}{publishAll.isError && <p className="error-text">{publishAll.error.message}</p>}{save.isSuccess && <p className="inline-note">All menu changes saved.</p>}{publishAll.isSuccess && <p className="inline-note">All {publishAll.data.length} menu items are now {publishAll.variables?.[0]?.available ? "available to" : "hidden from"} customer orders.</p>}
-    <div className="staff-product-list">{rows.map((row) => <div className="staff-product-row" key={row.key}><label className="menu-item-name">Product name<input required maxLength={200} value={row.item_name} onChange={(event) => updateRow(row.key, { item_name: event.target.value })} placeholder="e.g. Chocolate croissant"/></label><label>Current price<input required type="number" min="0" step="0.01" value={row.current_price} onChange={(event) => updateRow(row.key, { current_price: Number(event.target.value) })}/></label><span className={`menu-availability ${row.available ? "published" : "draft"}`}>{row.available ? "Available to order" : "Draft"}</span>{!row.id && <button className="icon-button menu-remove" type="button" aria-label="Remove new menu item" title="Remove row" onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}><Trash2 size={15}/></button>}</div>)}</div>
-    {!rows.length && !products.isLoading && <p className="empty-copy">No menu items yet. Add several items, then save them together.</p>}
+    <p className="menu-saved-summary">{rows.filter((row) => row.id).length} saved products · {rows.filter((row) => !row.id).length} new products to save</p>
+    <div className="staff-product-list">{rows.map((row) => <div className="staff-product-row" key={row.key}><label className="menu-item-name">{row.id ? "Saved product" : "New product"}<input id={`menu-name-${row.key}`} disabled={busy} required maxLength={200} value={row.item_name} onChange={(event) => updateRow(row.key, { item_name: event.target.value })} placeholder="e.g. Chocolate croissant"/></label><label>Current price<input disabled={busy} required type="number" min="0" step="0.01" value={row.current_price} onChange={(event) => updateRow(row.key, { current_price: Number(event.target.value) })}/></label><span className={`menu-availability ${row.available ? "published" : "draft"}`}>{row.available ? "Available to order" : row.id ? "Saved · hidden" : "New · not saved"}</span>{!row.id && <button className="icon-button menu-remove" type="button" disabled={busy} aria-label="Remove new menu item" title="Remove row" onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}><Trash2 size={15}/></button>}</div>)}</div>
+    {rows.length > 0 && <button className="button button-outline menu-add-after-saved" type="button" disabled={busy || products.isLoading || products.isError} onClick={addRow}><Plus size={15}/> Add another product</button>}
+    {!rows.length && !products.isLoading && <p className="empty-copy">No saved products yet. Upload a sales workbook to import products automatically, or add products here and save them together.</p>}
   </div>;
 }
 

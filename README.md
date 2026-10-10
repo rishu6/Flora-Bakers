@@ -5,6 +5,9 @@ Flora Bakes is a bakery sales analytics application. Upload an Excel workbook to
 ## Features
 
 - Excel `.xlsx` and `.xls` upload with a 20 MB configurable limit
+- Original workbooks archived in the database with their validated sales rows
+- Persistent product menu: imports add missing products and preserve staff-set prices and availability
+- Staff can download saved originals and add products after existing menu items
 - Case-insensitive aliases for item, date, price, time, weekday, and optional waste columns
 - Row-level validation report with totals, valid/invalid rows, missing values, and duplicate flags
 - Whitespace cleanup, currency-like price parsing, normalized times, and weekday recalculation from the sale date
@@ -37,7 +40,7 @@ frontend/
   src/components/       Upload panel and dashboard sections
   src/services/         REST API client
   src/types/            Shared response types
-uploads/                Reserved local upload storage (original files are not retained)
+uploads/                Legacy reserved directory; workbook archives are stored in the database
 ```
 
 ## Requirements
@@ -94,9 +97,23 @@ Open the local URL printed by Vite (normally `http://localhost:5173`). Vite prox
 | `SECRET_KEY` | Application secret placeholder | Local development value |
 | `CORS_ORIGINS` | Comma-separated allowed origins | `http://localhost:5173` |
 | `MAX_UPLOAD_SIZE_MB` | Maximum workbook size (1–100 MB) | `20` |
-| `UPLOAD_DIRECTORY` | Reserved upload storage directory | `uploads` |
+| `UPLOAD_DIRECTORY` | Legacy reserved directory; not used for workbook archives | `uploads` |
 
-For PostgreSQL, use a SQLAlchemy URL such as `postgresql+psycopg://user:password@host:5432/flora_bakes`. Keep credentials in the environment, not source control.
+For PostgreSQL, use a SQLAlchemy URL such as `postgresql+psycopg://user:password@host:5432/flora_bakes`. Plain `postgresql://` and `postgres://` connection URLs, including Render's database URLs, automatically use the installed psycopg 3 driver. Keep credentials in the environment, not source control.
+
+## Saved uploads and products on Render
+
+1. Keep the backend's `DATABASE_URL` connected to your existing Render PostgreSQL database. Use its internal connection URL when the backend and database are in the same region. See [Render's connection guide](https://render.com/docs/postgresql-creating-connecting).
+2. Deploy the updated backend and frontend. Startup creates the new `upload_workbooks` table without replacing existing tables or data. A persistent filesystem disk is unnecessary for workbook archives when using PostgreSQL because originals are stored as database bytes.
+3. Upload a workbook through **Import sales**. The original file, validation report, valid sales rows, and newly discovered products are committed together before success is returned.
+4. Open **Staff portal → Saved uploads** to see accepted workbooks and download archived originals. Downloads require staff sign-in. Dataset listing loads metadata without loading workbook bytes.
+5. Open **Menu & prices** to see saved products. **Add new product** appends a product after the saved items. Set its price and use **Save all items**, or **Make all items available** to save and publish the menu together. Adding products does not require replacing or uploading a workbook.
+
+Product names are matched without regard to case and with whitespace normalized. Repeated imports retain existing current menu prices and availability. New products are saved as hidden items using a price from a valid sales row, so staff can review current pricing before publishing. Sales history remains associated with its original upload; a newly added product will gain analytics when sales for it are uploaded.
+
+Older uploads retain their previously saved sales data, but files uploaded before archiving was added have no original bytes to download. Reupload the workbook if you need an archived original. Each reupload is a separate dataset; it does not replace earlier sales data or menu items.
+
+The local SQLite default is intended for development. An unmounted SQLite file on Render's default filesystem does not survive redeploys or restarts; use your existing PostgreSQL database for the deployed app. See [Render's persistence documentation](https://render.com/docs/disks).
 
 ## Excel format
 
@@ -125,6 +142,7 @@ This creates `sample_sales.xlsx` in the project root.
 - `POST /api/uploads` — validate and store a workbook batch
 - `GET /api/uploads` — list datasets
 - `GET /api/uploads/{upload_id}` — validation report for a dataset
+- `GET /api/uploads/{upload_id}/file` — staff-only download of the archived original workbook
 - `GET /api/dashboard/{upload_id}` — combined dashboard with optional `date_from`, `date_to`, `item`, `day`, `time_from`, `time_to`, and `granularity` filters
 - `GET /api/analytics/top-items/{upload_id}`
 - `GET /api/analytics/sales-by-day/{upload_id}`

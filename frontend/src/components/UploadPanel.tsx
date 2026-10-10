@@ -5,9 +5,11 @@ import type { UploadBatch } from "../types";
 interface Props {
   onUpload: (file: File) => Promise<UploadBatch>;
   onClose?: () => void;
+  onManageProducts?: () => void;
+  onSavedUploads?: () => void;
 }
 
-export function UploadPanel({ onUpload, onClose }: Props) {
+export function UploadPanel({ onUpload, onClose, onManageProducts, onSavedUploads }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -32,7 +34,9 @@ export function UploadPanel({ onUpload, onClose }: Props) {
   if (result) {
     const report = result.validation_report;
     return <section className="upload-result card">
-      <div className="result-head"><div className="success-icon"><ShieldCheck size={22}/></div><div><h2>File checked and ready</h2><p>{result.original_filename}</p></div>{onClose && <button className="icon-button close-button" onClick={onClose} aria-label="Close upload report"><X size={18}/></button>}</div>
+      <div className="result-head"><div className="success-icon"><ShieldCheck size={22}/></div><div><h2>{result.original_file_saved ? "Workbook saved on the server" : "Sales data saved"}</h2><p>{result.original_filename}</p></div>{onClose && <button className="icon-button close-button" onClick={onClose} aria-label="Close upload report"><X size={18}/></button>}</div>
+      {report.products_added != null && <p className="inline-note">{report.products_added} new products saved to your menu · {report.products_existing ?? 0} existing products kept. New products from valid sales rows are saved as hidden items so you can review their current prices before making them available to order.</p>}
+      <div className="saved-upload-actions">{onManageProducts && <button type="button" className="button button-outline" onClick={onManageProducts}>Manage saved products &amp; add new items</button>}{onSavedUploads && <button type="button" className="button button-quiet" onClick={onSavedUploads}>View saved workbooks</button>}</div>
       <div className="validation-grid">
         <div><strong>{report.total_rows.toLocaleString()}</strong><span>Total rows</span></div><div><strong>{report.valid_rows.toLocaleString()}</strong><span>Valid</span></div><div><strong>{report.invalid_rows.toLocaleString()}</strong><span>Invalid</span></div><div><strong>{report.duplicate_rows.toLocaleString()}</strong><span>Duplicates retained</span></div><div><strong>{report.missing_value_rows.toLocaleString()}</strong><span>Rows with missing values</span></div>
       </div>

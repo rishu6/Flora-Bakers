@@ -2,7 +2,7 @@
 
 from datetime import date, datetime, time, timezone
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Time, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Time, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -28,6 +28,18 @@ class UploadBatch(Base):
     waste_available: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     records: Mapped[list["SalesRecord"]] = relationship(back_populates="batch", cascade="all, delete-orphan")
+    workbook: Mapped["UploadWorkbook | None"] = relationship(back_populates="batch", cascade="all, delete-orphan", uselist=False)
+
+
+class UploadWorkbook(Base):
+    """Original workbook bytes stored with the dataset, including on PostgreSQL."""
+
+    __tablename__ = "upload_workbooks"
+
+    upload_batch_id: Mapped[int] = mapped_column(ForeignKey("upload_batches.id", ondelete="CASCADE"), primary_key=True)
+    # Dataset lists load metadata only; file contents are loaded when downloaded.
+    contents: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, deferred=True)
+    batch: Mapped[UploadBatch] = relationship(back_populates="workbook")
 
 
 class SalesRecord(Base):

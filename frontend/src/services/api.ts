@@ -37,6 +37,22 @@ export const uploadWorkbook = (file: File) => {
   return request<UploadBatch>("/api/uploads", { method: "POST", body: form });
 };
 
+export async function downloadOriginalWorkbook(id: number, filename: string): Promise<void> {
+  const response = await fetch(apiUrl(`/api/uploads/${id}/file`), { credentials: "include" });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { detail?: string } | null;
+    throw new Error(body?.detail ?? `Download failed (${response.status}). Please try again.`);
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export interface StoreProduct { id: number; item_name: string; current_price: number; available: boolean; }
 export interface OrderLine { product_id: number; quantity: number; }
 export interface OrderDraft { customer_name: string; customer_phone: string; pickup_at: string | null; items: OrderLine[]; }
