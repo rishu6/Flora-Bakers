@@ -1,13 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, FolderArchive, LogOut, MessageSquareText, Minus, Package, Plus, ShieldCheck, Trash2, X } from "lucide-react";
-import { createStaffOrder, getStaffFeedback, getStaffOrders, getStaffProducts, getStaffSession, importStaffFeedback, loginStaff, logoutStaff, saveStaffProductsBulk, updateStaffOrder, type OrderDraft, type StoreProduct } from "../services/api";
+import { Check, ClipboardList, FolderArchive, LoaderCircle, LogOut, MessageSquareText, Minus, Package, Plus, ShieldCheck, Trash2, X } from "lucide-react";
+import { createStaffOrder, getStaffFeedback, getStaffOrders, getStaffProducts, getStaffSession, importStaffFeedback, loginStaff, logoutStaff, saveStaffProductsBulk, updateStaffOrder, type OrderDraft, type StoreOrder, type StoreProduct } from "../services/api";
 
 import { SavedUploads } from "./SavedUploads";
 
 export type StaffTab = "orders" | "products" | "feedback" | "uploads";
 const money = (value: number) => new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(value);
-const orderStatuses = ["new", "confirmed", "preparing", "ready", "completed", "cancelled"];
+const orderStatuses = [
+  { value: "new", label: "New" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "preparing", label: "Preparing" },
+  { value: "ready", label: "Ready for pickup" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
+];
 
 export function StaffPortal({ initialTab = "orders" }: { initialTab?: StaffTab }) {
   const client = useQueryClient();
@@ -98,7 +105,6 @@ function StaffOrders() {
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const availableProducts = products.data?.filter((product) => product.available) ?? [];
   const create = useMutation({ mutationFn: createStaffOrder, onSuccess: async () => { setCustomerName(""); setPhone(""); setPickupAt(""); setQuantities({}); await client.invalidateQueries({ queryKey: ["staff-orders"] }); } });
-  const update = useMutation({ mutationFn: ({ id, status, payment_status }: { id: number; status: string; payment_status: string }) => updateStaffOrder(id, { status, payment_status }), onSuccess: async () => { await client.invalidateQueries({ queryKey: ["staff-orders"] }); await client.invalidateQueries({ queryKey: ["staff-feedback"] }); } });
   const searchText = productSearch.trim().toLowerCase().replace(/\s+/g, "");
   const matches = availableProducts.filter((product) => {
     if (!searchText) return true;
@@ -129,8 +135,43 @@ function StaffOrders() {
     </form></section>
     <section className="staff-panel card"><div className="staff-panel-heading"><div><span className="muted-label">PICKUP QUEUE</span><h3>Orders</h3></div><button className="button button-outline" onClick={() => void orders.refetch()}>Refresh</button></div>
       {orders.isError && <p className="error-text">{orders.error.message}</p>}{!orders.data?.length && !orders.isLoading && <p className="empty-copy">No orders yet.</p>}
-      <div className="order-queue">{orders.data?.map((order) => <article className="order-queue-card" key={order.id}><div className="order-queue-heading"><strong>{order.customer_name}</strong><code>{order.public_code}</code><span>{new Date(order.created_at).toLocaleString()}</span></div><div className="order-queue-contact">{order.customer_phone} · pickup {order.pickup_at ? new Date(order.pickup_at).toLocaleString() : "time not set"}</div><div className="order-queue-lines">{order.items.map((item, index) => <span key={`${item.product_name}-${index}`}>{item.quantity} × {item.product_name}</span>)}</div><div className="order-queue-controls"><strong>Total {money(order.total)}</strong><label>Status<select value={order.status} onChange={(event) => update.mutate({ id: order.id, status: event.target.value, payment_status: order.payment_status })}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label><label>Payment<select value={order.payment_status} onChange={(event) => update.mutate({ id: order.id, status: order.status, payment_status: event.target.value })}><option value="pending">Pending</option><option value="paid">Paid</option><option value="refunded">Refunded</option></select></label></div></article>)}</div>
+      <div className="order-queue">{orders.data?.map((order) => <StaffOrderCard order={order} key={order.id}/>)}</div>
     </section></div>;
+}
+
+function StaffOrderCard({ order }: { order: StoreOrder }) {
+  const client = useQueryClient();
+  const update = useMutation({
+    mutationFn: (change: { status: string; payment_status?: string }) => updateStaffOrder(order.id, change),
+    onSuccess: async (saved) => {
+      client.setQueryData<StoreOrder[]>(["staff-orders"], (current) => current?.map((entry) => entry.id === saved.id ? saved : entry));
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["staff-orders"] }),
+        client.invalidateQueries({ queryKey: ["staff-feedback"] }),
+        client.invalidateQueries({ queryKey: ["store-order", saved.public_code] }),
+      ]);
+    },
+  });
+  const currentLabel = orderStatuses.find((status) => status.value === order.status)?.label ?? order.status;
+  return <article className="order-queue-card">
+    <div className="order-queue-heading"><strong>{order.customer_name}</strong><code>{order.public_code}</code><span>{new Date(order.created_at).toLocaleString()}</span></div>
+    <div className="order-queue-contact">{order.customer_phone} · pickup {order.pickup_at ? new Date(order.pickup_at).toLocaleString() : "time not set"}</div>
+    <div className="order-queue-lines">{order.items.map((item, index) => <span key={`${item.product_name}-${index}`}>{item.quantity} × {item.product_name}</span>)}</div>
+    <div className="order-queue-controls"><strong>Total {money(order.total)}</strong><label>Payment<select disabled={update.isPending} value={order.payment_status} onChange={(event) => update.mutate({ status: order.status, payment_status: event.target.value })}><option value="pending">Pending</option><option value="paid">Paid</option><option value="refunded">Refunded</option></select></label></div>
+    <div className="staff-status-heading"><span>Order status</span><strong className={`staff-current-status status-${order.status}`}>{currentLabel}</strong></div>
+    <div className="staff-status-buttons" role="group" aria-label={`Update order status for ${order.customer_name}, order ${order.public_code}`} aria-busy={update.isPending}>
+      {orderStatuses.map(({ value, label }) => {
+        const active = order.status === value;
+        const saving = update.isPending && update.variables?.status === value && !update.variables?.payment_status;
+        return <button type="button" className={`staff-status-button status-${value}${active ? " is-current" : ""}`} key={value} aria-pressed={active} disabled={update.isPending || active} onClick={() => update.mutate({ status: value })}>
+          {saving ? <LoaderCircle size={16} className="spin" aria-hidden="true"/> : active ? <Check size={16} aria-hidden="true"/> : null}{label}
+        </button>;
+      })}
+    </div>
+    <p className={`staff-status-message${update.isError ? " error-text" : ""}`} role={update.isError ? "alert" : "status"}>
+      {update.isPending ? "Saving update…" : update.isError ? `Update wasn’t saved. ${update.error.message} Please try again.` : update.isSuccess ? `Saved · ${orderStatuses.find((status) => status.value === update.data.status)?.label ?? update.data.status} · Payment ${update.data.payment_status}` : "Click a status to save it immediately."}
+    </p>
+  </article>;
 }
 
 function StaffFeedback() {
