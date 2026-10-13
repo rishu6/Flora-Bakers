@@ -11,9 +11,8 @@ import { CustomerStorefront } from "./components/CustomerStorefront";
 import { UploadPanel } from "./components/UploadPanel";
 import { getDashboard, getUploads, uploadWorkbook } from "./services/api";
 import type { UploadBatch } from "./types";
+import { emptyFilters, readStoredValue, readWorkspacePreferences, saveWorkspacePreferences, writeStoredValue, type WorkspaceView } from "./data/workspacePreferences";
 
-const emptyFilters: DashboardFilters = { date_from: "", date_to: "", item: "", day: "", time_from: "", time_to: "" };
-type WorkspaceView = "dashboard" | "report" | "suggestions" | "products" | "repeat" | "shop" | "staff";
 const viewDetails: Record<WorkspaceView, { title: string; subtitle: string }> = {
   dashboard: { title: "Sales overview", subtitle: "Your bakery’s performance at a glance" },
   report: { title: "Analytical report", subtitle: "Explore sales patterns across products, dates, and times" },
@@ -36,23 +35,25 @@ export function App() {
 
 function BusinessWorkspace() {
   const client = useQueryClient();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [activeView, setActiveView] = useState<WorkspaceView>("dashboard");
+  const [restored] = useState(readWorkspacePreferences);
+  const [selectedId, setSelectedId] = useState<number | null>(restored.selectedId);
+  const [activeView, setActiveView] = useState<WorkspaceView>(restored.activeView);
   const [staffInitialTab, setStaffInitialTab] = useState<StaffTab>("orders");
   const [justUploaded, setJustUploaded] = useState<UploadBatch | null>(null);
-  const [filters, setFilters] = useState(emptyFilters);
-  const [granularity, setGranularity] = useState("daily");
+  const [filters, setFilters] = useState(restored.filters);
+  const [granularity, setGranularity] = useState(restored.granularity);
   const [showUploader, setShowUploader] = useState(false);
-  const [dark, setDark] = useState(() => localStorage.getItem("flora-theme") === "dark");
+  const [dark, setDark] = useState(() => readStoredValue("flora-theme") === "dark");
   const [helpOpen, setHelpOpen] = useState(false);
   const uploads = useQuery({ queryKey: ["uploads"], queryFn: getUploads });
-  const batch = uploads.data?.find((row) => row.id === selectedId) ?? (justUploaded?.id === selectedId ? justUploaded : null) ?? (selectedId === null ? uploads.data?.[0] : null) ?? null;
+  const batch = uploads.data?.find((row) => row.id === selectedId) ?? (justUploaded?.id === selectedId ? justUploaded : null) ?? uploads.data?.[0] ?? null;
 
-  useEffect(() => { if (batch && selectedId !== batch.id) setSelectedId(batch.id); }, [batch, selectedId]);
-  useEffect(() => { document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("flora-theme", dark ? "dark" : "light"); }, [dark]);
+  useEffect(() => { if (batch && selectedId !== batch.id) { setSelectedId(batch.id); setFilters(emptyFilters); } }, [batch, selectedId]);
+  useEffect(() => { saveWorkspacePreferences({ selectedId, activeView, filters, granularity }); }, [selectedId, activeView, filters, granularity]);
+  useEffect(() => { document.documentElement.dataset.theme = dark ? "dark" : "light"; writeStoredValue("flora-theme", dark ? "dark" : "light"); }, [dark]);
   const params = useMemo(() => queryParams(filters, granularity), [filters, granularity]);
   const dashboard = useQuery({ queryKey: ["dashboard", batch?.id, params.toString()], queryFn: () => getDashboard(batch!.id, params), enabled: Boolean(batch?.valid_records) && activeView !== "shop" && activeView !== "staff" });
-  const upload = useMutation({ mutationFn: uploadWorkbook, onSuccess: async (uploaded) => { setJustUploaded(uploaded); setSelectedId(uploaded.id); setFilters(emptyFilters); setActiveView("dashboard"); setShowUploader(true); await Promise.all([client.invalidateQueries({ queryKey: ["uploads"] }), client.invalidateQueries({ queryKey: ["staff-products"] }), client.invalidateQueries({ queryKey: ["store-products"] })]); } });
+  const upload = useMutation({ mutationFn: uploadWorkbook, onSuccess: async (uploaded) => { setJustUploaded(uploaded); setSelectedId(uploaded.id); setFilters(emptyFilters); setActiveView("dashboard"); setShowUploader(true); await Promise.all([client.invalidateQueries({ queryKey: ["uploads"] }), client.invalidateQueries({ queryKey: ["staff-products"] }), client.invalidateQueries({ queryKey: ["store-products"] }), client.invalidateQueries({ queryKey: ["staff-storage"] })]); } });
 
   const doUpload = async (file: File): Promise<UploadBatch> => upload.mutateAsync(file);
   const refresh = () => { void client.invalidateQueries({ queryKey: ["dashboard", batch?.id] }); void client.invalidateQueries({ queryKey: ["uploads"] }); };

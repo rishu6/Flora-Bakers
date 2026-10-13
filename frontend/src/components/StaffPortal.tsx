@@ -68,8 +68,8 @@ function StaffProducts() {
       pendingFocus.current = null;
     }
   }, [rows]);
-  const save = useMutation({ mutationFn: saveStaffProductsBulk, onSuccess: async (saved) => { setRows(saved.map((product) => ({ ...product, key: `product-${product.id}` }))); await Promise.all([client.invalidateQueries({ queryKey: ["staff-products"] }), client.invalidateQueries({ queryKey: ["store-products"] })]); } });
-  const publishAll = useMutation({ mutationFn: saveStaffProductsBulk, onSuccess: async (saved) => { setRows(saved.map((product) => ({ ...product, key: `product-${product.id}` }))); await Promise.all([client.invalidateQueries({ queryKey: ["staff-products"] }), client.invalidateQueries({ queryKey: ["store-products"] })]); } });
+  const save = useMutation({ mutationFn: saveStaffProductsBulk, onSuccess: async (saved) => { setRows(saved.map((product) => ({ ...product, key: `product-${product.id}` }))); await Promise.all([client.invalidateQueries({ queryKey: ["staff-products"] }), client.invalidateQueries({ queryKey: ["store-products"] }), client.invalidateQueries({ queryKey: ["staff-storage"] })]); } });
+  const publishAll = useMutation({ mutationFn: saveStaffProductsBulk, onSuccess: async (saved) => { setRows(saved.map((product) => ({ ...product, key: `product-${product.id}` }))); await Promise.all([client.invalidateQueries({ queryKey: ["staff-products"] }), client.invalidateQueries({ queryKey: ["store-products"] }), client.invalidateQueries({ queryKey: ["staff-storage"] })]); } });
   const willPublishAll = !rows.length || rows.some((row) => !row.available);
   const busy = save.isPending || publishAll.isPending;
   const updateRow = (key: string, update: Partial<StoreProduct>) => {

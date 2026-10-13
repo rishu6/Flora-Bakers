@@ -1,14 +1,21 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Download, FileSpreadsheet, Package } from "lucide-react";
-import { downloadOriginalWorkbook, getUploads } from "../services/api";
+import { Download, FileSpreadsheet, Package, RefreshCw } from "lucide-react";
+import { downloadOriginalWorkbook, getStaffStorage, getUploads } from "../services/api";
 import type { UploadBatch } from "../types";
 
 export function SavedUploads({ onManageProducts }: { onManageProducts: () => void }) {
   const uploads = useQuery({ queryKey: ["uploads"], queryFn: getUploads });
+  const storage = useQuery({ queryKey: ["staff-storage"], queryFn: getStaffStorage });
   const download = useMutation({ mutationFn: (batch: UploadBatch) => downloadOriginalWorkbook(batch.id, batch.original_filename) });
   return <section className="staff-panel card saved-uploads-panel">
     <div className="staff-panel-heading"><div><span className="muted-label">SAVED ON THE SERVER</span><h3>Your uploaded workbooks</h3></div><button type="button" className="button button-outline" onClick={onManageProducts}><Package size={16}/> Manage saved products</button></div>
     <p>Accepted workbooks and their sales data are saved automatically. Products stay in your menu when you upload another workbook, and you can add new products at any time.</p>
+    <div className="saved-storage-status">
+      {storage.data && <div><strong>{storage.data.database_backend === "postgresql" ? "PostgreSQL storage" : `${storage.data.database_backend} storage`}</strong><p>{storage.data.message}</p><span>{storage.data.uploads.toLocaleString()} saved uploads · {storage.data.sales_rows.toLocaleString()} saved sales rows · {storage.data.products.toLocaleString()} saved products</span></div>}
+      {storage.isPending && <p role="status">Checking server storage…</p>}
+      {storage.isError && <p className="error-text" role="alert">Couldn’t confirm server storage. {storage.error.message}</p>}
+      <button type="button" className="button button-outline" disabled={storage.isFetching || uploads.isFetching} onClick={() => { void storage.refetch(); void uploads.refetch(); }}><RefreshCw size={16}/> Refresh saved data</button>
+    </div>
     {uploads.isLoading && <p role="status">Loading saved uploads…</p>}
     {uploads.isError && <div><p className="error-text" role="alert">{uploads.error.message}</p><button type="button" className="button button-outline" onClick={() => void uploads.refetch()}>Try again</button></div>}
     {download.isError && <p className="error-text" role="alert">{download.error.message}</p>}

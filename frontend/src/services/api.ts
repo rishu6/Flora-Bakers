@@ -66,6 +66,7 @@ export const placeCustomerOrder = (order: OrderDraft) => request<StoreOrder>("/a
 export const trackCustomerOrder = (code: string) => request<PublicStoreOrder>(`/api/store/orders/${encodeURIComponent(code)}`);
 export const submitOrderFeedback = (code: string, feedback: { product_name: string; rating: number; comment: string }) => request<{ status: string }>(`/api/store/orders/${encodeURIComponent(code)}/feedback`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(feedback) });
 export const getStaffSession = () => request<{ username: string }>("/api/staff/session");
+export const getStaffStorage = () => request<{ database_backend: string; uploads: number; sales_rows: number; products: number; message: string }>("/api/staff/storage");
 export const loginStaff = (username: string, password: string) => request<{ username: string }>("/api/staff/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
 export const logoutStaff = () => request<{ status: string }>("/api/staff/logout", { method: "POST" });
 export const getStaffProducts = () => request<StoreProduct[]>("/api/staff/products");

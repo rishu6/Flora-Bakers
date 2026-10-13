@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import SESSION_COOKIE, SESSION_SECONDS, issue_session, require_staff
 from app.core.config import settings
-from app.db.database import get_db
-from app.db.models import CustomerFeedback, CustomerOrder, CustomerOrderItem, Product
+from app.db.database import engine, get_db
+from app.db.models import CustomerFeedback, CustomerOrder, CustomerOrderItem, Product, SalesRecord, UploadBatch
 from app.schemas.store import BulkProductInput, CustomerOrderInput, FeedbackInput, OrderStatusInput, ProductInput, StaffLogin, StaffOrderInput
 
 store_router = APIRouter(prefix="/store", tags=["storefront"])
@@ -138,6 +138,23 @@ def staff_logout(response: Response) -> dict[str, str]:
 @staff_router.get("/session")
 def staff_session(username: str = Depends(require_staff)) -> dict[str, str]:
     return {"username": username}
+
+
+@staff_router.get("/storage")
+def staff_storage(_: str = Depends(require_staff), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Report the actual database in use without exposing connection credentials."""
+    backend = engine.dialect.name
+    return {
+        "database_backend": backend,
+        "uploads": db.scalar(select(func.count()).select_from(UploadBatch)) or 0,
+        "sales_rows": db.scalar(select(func.count()).select_from(SalesRecord)) or 0,
+        "products": db.scalar(select(func.count()).select_from(Product)) or 0,
+        "message": (
+            "Uploads, sales rows and products are stored in PostgreSQL."
+            if backend == "postgresql" else
+            "Uploads are saved in this server’s database. If using SQLite on Render, connect PostgreSQL or keep the database file on a persistent disk to retain data after restarts."
+        ),
+    }
 
 
 @staff_router.get("/products")

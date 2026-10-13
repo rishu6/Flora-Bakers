@@ -109,6 +109,14 @@ For PostgreSQL, use a SQLAlchemy URL such as `postgresql+psycopg://user:password
 4. Open **Staff portal → Saved uploads** to see accepted workbooks and download archived originals. Downloads require staff sign-in. Dataset listing loads metadata without loading workbook bytes.
 5. Open **Menu & prices** to see saved products. **Add new product** appends a product after the saved items. Set its price and use **Save all items**, or **Make all items available** to save and publish the menu together. Adding products does not require replacing or uploading a workbook.
 
+### Returning after a reload
+
+The business workspace remembers the selected dataset, section, date/item/time filters, and trend interval on the same browser. A reload fetches the saved workbooks and sales data from the backend again, then opens that dataset and section. If the remembered dataset no longer exists, the latest available dataset is selected and filters reset. Browser preferences store no workbook bytes or sales rows. If browser storage is blocked or cleared, the server data is still available through the dataset selector.
+
+**Staff portal → Saved uploads** reports the database type actually used by the backend, together with saved upload, sales-row, and product counts. **Refresh saved data** reads those counts again. If uploads disappear, check that the backend service's `DATABASE_URL` points to the same PostgreSQL database and the frontend's `VITE_API_BASE_URL` points to that backend. Creating a PostgreSQL database alone does not connect the web service to it; set the environment variable on the backend service. Do not replace an existing database just to refresh the website.
+
+Repeat item demand uses matching local product images from the shared catalog, with image credits available below its cards.
+
 Product names are matched without regard to case and with whitespace normalized. Repeated imports retain existing current menu prices and availability. New products are saved as hidden items using a price from a valid sales row, so staff can review current pricing before publishing. Sales history remains associated with its original upload; a newly added product will gain analytics when sales for it are uploaded.
 
 Older uploads retain their previously saved sales data, but files uploaded before archiving was added have no original bytes to download. Reupload the workbook if you need an archived original. Each reupload is a separate dataset; it does not replace earlier sales data or menu items.
